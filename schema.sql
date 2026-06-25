@@ -23,3 +23,10 @@ CREATE TABLE IF NOT EXISTS rankings (
 
 CREATE INDEX IF NOT EXISTS idx_rankings_asin ON rankings(asin);
 CREATE INDEX IF NOT EXISTS idx_rankings_date ON rankings(date);
+
+CREATE TABLE IF NOT EXISTS settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+
+INSERT OR IGNORE INTO settings (key, value) VALUES ('site_password', '123456789A');

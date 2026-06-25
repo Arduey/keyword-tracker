@@ -4,13 +4,58 @@ let pendingData = null;
 let allData = {};
 let activeTab = null;
 let deleteTarget = { asin: null, date: null };
+let authToken = localStorage.getItem('kw_auth') || '';
+
+// ========== Auth ==========
+async function checkAuth() {
+  if (authToken) {
+    try {
+      const resp = await fetch('/api/data', { headers: { 'X-Auth': authToken } });
+      if (resp.ok) { showMain(); return; }
+    } catch(e) {}
+  }
+  document.getElementById('loginOverlay').style.display = 'flex';
+  document.getElementById('mainApp').style.display = 'none';
+}
+
+async function verifyPassword() {
+  const pwd = document.getElementById('passwordInput').value.trim();
+  if (!pwd) return;
+  try {
+    const resp = await fetch('/api/auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: pwd })
+    });
+    const data = await resp.json();
+    if (data.ok) {
+      authToken = data.token;
+      if (document.getElementById('rememberPwd').checked) {
+        localStorage.setItem('kw_auth', authToken);
+      }
+      document.getElementById('loginOverlay').style.display = 'none';
+      document.getElementById('loginError').style.display = 'none';
+      showMain();
+    } else {
+      document.getElementById('loginError').style.display = 'block';
+    }
+  } catch(e) {
+    document.getElementById('loginError').style.display = 'block';
+  }
+}
+
+function showMain() {
+  document.getElementById('loginOverlay').style.display = 'none';
+  document.getElementById('mainApp').style.display = 'block';
+  refreshData();
+}
 
 // ========== Data Loading ==========
 
 async function refreshData() {
   try {
-    const resp = await fetch('/api/data');
-    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const resp = await fetch('/api/data', { headers: { 'X-Auth': authToken } });
+    if (!resp.ok) { authToken = ''; localStorage.removeItem('kw_auth'); checkAuth(); return; }
     allData = await resp.json();
     renderTabs();
     renderPreview();
@@ -264,4 +309,4 @@ function formatDateChinese(iso) {
   return parseInt(p[1]) + '月' + parseInt(p[2]) + '日';
 }
 
-refreshData();
+checkAuth();
