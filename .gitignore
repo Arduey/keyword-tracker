@@ -5,3 +5,4 @@ dist/
 *.log
 wrangler-run.bat
 _worker.js/
+.git-rewrite/
