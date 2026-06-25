@@ -1,13 +1,10 @@
 name = "keyword-tracker"
-main = "./functions"
 compatibility_date = "2025-07-01"
+
+# Cloudflare Pages auto-detects functions/ directory
+# D1 binding is configured in Cloudflare Dashboard → Pages → Settings → Functions
 
 [[d1_databases]]
 binding = "DB"
 database_name = "keyword-tracker-db"
 database_id = "replace-with-your-d1-database-id"
-
-[env.production]
-d1_databases = [
-  { binding = "DB", database_name = "keyword-tracker-db", database_id = "replace-with-your-d1-database-id" }
-]
