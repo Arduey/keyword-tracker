@@ -1,4 +1,4 @@
-// GET /api/export — Generate Excel HTML file matching the reference template format
+// GET /api/export — Generate Excel HTML file
 export async function onRequest(context) {
   const { request, env } = context;
   const db = env.DB;
@@ -40,22 +40,32 @@ export async function onRequest(context) {
 function formatDateChinese(iso) {
   const p = iso.split('-');
   if (p.length !== 3) return iso;
-  return parseInt(p[1]) + '月' + parseInt(p[2]) + '日';
+  const m = parseInt(p[1], 10);
+  const d = parseInt(p[2], 10);
+  return `${m}月${d}日`;
 }
 
-// Excel serial date number (for x:num display)
 function dateToSerial(iso) {
   const d = new Date(iso + 'T00:00:00');
-  // Excel epoch is 1900-01-01 = serial 1, but with the leap year bug
-  // Using 1899-12-30 as baseline
   const base = new Date('1899-12-30T00:00:00');
   return Math.round((d - base) / (1000 * 60 * 60 * 24));
+}
+
+// Calculate longest keyword length for column width
+function calcColWidth(text, isDate = false) {
+  if (isDate) return 130; // "M月dd日" fits in 130px
+  if (!text) return 100;
+  // ~14px per CJK char, ~8px per ASCII char
+  let w = 0;
+  for (const ch of text) {
+    w += (ch.charCodeAt(0) > 127) ? 14 : 8;
+  }
+  return Math.max(80, Math.min(w + 20, 300));
 }
 
 function generateMultiSheetHtml(data) {
   const asins = Object.keys(data).sort();
   
-  // Collect all keywords and dates
   const allKeywords = new Set();
   const allDates = new Set();
   for (const asin of asins) {
@@ -66,22 +76,30 @@ function generateMultiSheetHtml(data) {
   }
   const keywordList = [...allKeywords].sort();
   const sortedDates = [...allDates].sort();
-  const extraCols = 20;
-  const totalCols = 1 + sortedDates.length + extraCols;
+  const extraCols = 5;
   
-  // Heights: rank row = 1.02cm ≈ 28.9pt, normal row = 0.71cm ≈ 20.1pt
+  // Calculate column widths
+  const kwColWidth = Math.max(160, ...keywordList.map(k => calcColWidth(k)));
+  const dateColWidth = Math.max(100, ...sortedDates.map(d => calcColWidth(formatDateChinese(d), true)));
+  
   const H_RANK = '28.9pt';
   const H_NORMAL = '20.1pt';
+  const FONT = '"等线","DengXian",sans-serif';
+  const FONT_SIZE = '11pt';
   
-  // Common styles
-  const S_DATE = 'text-align:center;vertical-align:middle;font-family:"等线","DengXian",sans-serif;font-size:11pt;';
-  const S_RANK = 'text-align:left;vertical-align:middle;font-family:"等线","DengXian",sans-serif;font-size:11pt;';
-  const S_CENTER = 'text-align:center;vertical-align:middle;font-family:"等线","DengXian",sans-serif;font-size:11pt;';
-  const S_SECTION = 'text-align:left;vertical-align:middle;font-family:"等线","DengXian",sans-serif;font-size:11pt;font-weight:bold;background:#F2F2F2;';
-  const S_KW = 'text-align:center;vertical-align:middle;font-family:"等线","DengXian",sans-serif;font-size:11pt;';
+  // Styles
+  const S_DATE = `text-align:center;vertical-align:middle;font-family:${FONT};font-size:${FONT_SIZE};`;
+  const S_RANK = `text-align:left;vertical-align:middle;font-family:${FONT};font-size:${FONT_SIZE};white-space:normal;word-wrap:break-word;`;
+  const S_CENTER = `text-align:center;vertical-align:middle;font-family:${FONT};font-size:${FONT_SIZE};`;
+  const S_SECTION = `text-align:left;vertical-align:middle;font-family:${FONT};font-size:${FONT_SIZE};font-weight:bold;background:#5B9BD5;color:#FFFFFF;`;
+  const S_KW_POS = `text-align:center;vertical-align:middle;font-family:${FONT};font-size:${FONT_SIZE};`;
+  const S_KW_LABEL = `text-align:left;vertical-align:middle;font-family:${FONT};font-size:${FONT_SIZE};`;
 
   let sheetsXml = '';
   let tablesHtml = '';
+
+  // Scroll to last date: ActiveCol = sortedDates.length (1-indexed)
+  const activeCol = sortedDates.length;
   
   for (const asin of asins) {
     const product = data[asin];
@@ -92,21 +110,23 @@ function generateMultiSheetHtml(data) {
 <x:SplitHorizontal>3</x:SplitHorizontal><x:TopRowBottomPane>3</x:TopRowBottomPane>
 <x:SplitVertical>1</x:SplitVertical><x:LeftColumnRightPane>1</x:LeftColumnRightPane>
 <x:ActivePane>0</x:ActivePane>
+<x:ActiveCol>${activeCol}</x:ActiveCol>
+<x:ActiveRow>0</x:ActiveRow>
 <x:DefaultRowHeight>300</x:DefaultRowHeight>
 </x:WorksheetOptions></x:ExcelWorksheet>`;
     
-    tablesHtml += `<table border="0" cellpadding="0" cellspacing="0" style="border-collapse:collapse;table-layout:fixed;">`;
+    tablesHtml += `<table border="0" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">`;
     
-    // Col definitions
-    tablesHtml += `<col width="180" style="mso-width-source:userset;"/>`;
-    for (let i = 0; i < sortedDates.length; i++) {
-      tablesHtml += `<col width="150" style="mso-width-source:userset;"/>`;
+    // Col definitions with calculated widths
+    tablesHtml += `<col width="${kwColWidth}" style="mso-width-source:userset;"/>`;
+    for (const d of sortedDates) {
+      tablesHtml += `<col width="${dateColWidth}" style="mso-width-source:userset;"/>`;
     }
     for (let i = 0; i < extraCols; i++) {
-      tablesHtml += `<col width="150" style="mso-width-source:userset;"/>`;
+      tablesHtml += `<col width="${dateColWidth}" style="mso-width-source:userset;"/>`;
     }
     
-    // === Row 1: Product name + dates ===
+    // Row 1: Product name + dates
     tablesHtml += `<tr height="20.1" style="height:${H_NORMAL};">`;
     tablesHtml += `<td style="${S_DATE}font-weight:bold;" x:str>${esc(product.name)}</td>`;
     for (const d of sortedDates) {
@@ -118,20 +138,22 @@ function generateMultiSheetHtml(data) {
     }
     tablesHtml += `</tr>\n`;
     
-    // === Row 2: ASIN + rank data (height 1.02cm) ===
+    // Row 2: ASIN + rank (multi-line, # starts new line)
     tablesHtml += `<tr height="28.9" style="height:${H_RANK};">`;
     tablesHtml += `<td style="${S_RANK}font-weight:bold;" x:str>${esc(asin)}</td>`;
     for (const d of sortedDates) {
       const dd = product.dates[d];
       const rank = dd ? (dd.rank || '') : '';
-      tablesHtml += `<td style="${S_RANK}" x:str>${esc(rank)}</td>`;
+      // Format: replace " #" with "\n#" for multi-line
+      const formattedRank = rank.replace(/\s+#/g, '\n#');
+      tablesHtml += `<td style="${S_RANK}" x:str>${esc(formattedRank)}</td>`;
     }
     for (let i = 0; i < extraCols; i++) {
       tablesHtml += `<td style="${S_RANK}"></td>`;
     }
     tablesHtml += `</tr>\n`;
     
-    // === Row 3: Rating / Review count ===
+    // Row 3: Rating / Review count
     tablesHtml += `<tr height="20.1" style="height:${H_NORMAL};">`;
     tablesHtml += `<td style="${S_CENTER}"></td>`;
     for (const d of sortedDates) {
@@ -144,7 +166,7 @@ function generateMultiSheetHtml(data) {
     }
     tablesHtml += `</tr>\n`;
     
-    // === 自然位-精准词 Section ===
+    // 自然位 section
     tablesHtml += `<tr height="20.1" style="height:${H_NORMAL};">`;
     tablesHtml += `<td style="${S_SECTION}" x:str>自然位-精准词</td>`;
     for (let i = 0; i < sortedDates.length + extraCols; i++) {
@@ -154,27 +176,24 @@ function generateMultiSheetHtml(data) {
     
     for (const kw of keywordList) {
       tablesHtml += `<tr height="20.1" style="height:${H_NORMAL};">`;
-      tablesHtml += `<td style="${S_RANK}" x:str>${esc(kw)}</td>`;
+      tablesHtml += `<td style="${S_KW_LABEL}" x:str>${esc(kw)}</td>`;
       for (const d of sortedDates) {
         const dd = product.dates[d];
         const pos = (dd && dd.keywords[kw]) ? dd.keywords[kw].n : '';
-        tablesHtml += `<td style="${S_KW}" x:str>${pos}</td>`;
+        tablesHtml += `<td style="${S_KW_POS}" x:str>${pos}</td>`;
       }
       for (let i = 0; i < extraCols; i++) {
-        tablesHtml += `<td style="${S_KW}"></td>`;
+        tablesHtml += `<td style="${S_KW_POS}"></td>`;
       }
       tablesHtml += `</tr>\n`;
     }
     
     // Separator
-    tablesHtml += `<tr height="15.75" style="height:15.75pt;">`;
-    tablesHtml += `<td></td>`;
-    for (let i = 0; i < sortedDates.length + extraCols; i++) {
-      tablesHtml += `<td></td>`;
-    }
+    tablesHtml += `<tr height="15.75" style="height:15.75pt;"><td></td>`;
+    for (let i = 0; i < sortedDates.length + extraCols; i++) tablesHtml += `<td></td>`;
     tablesHtml += `</tr>\n`;
     
-    // === 广告位-精准词 Section ===
+    // 广告位 section
     tablesHtml += `<tr height="20.1" style="height:${H_NORMAL};">`;
     tablesHtml += `<td style="${S_SECTION}" x:str>广告位-精准词</td>`;
     for (let i = 0; i < sortedDates.length + extraCols; i++) {
@@ -184,14 +203,14 @@ function generateMultiSheetHtml(data) {
     
     for (const kw of keywordList) {
       tablesHtml += `<tr height="20.1" style="height:${H_NORMAL};">`;
-      tablesHtml += `<td style="${S_RANK}" x:str>${esc(kw)}</td>`;
+      tablesHtml += `<td style="${S_KW_LABEL}" x:str>${esc(kw)}</td>`;
       for (const d of sortedDates) {
         const dd = product.dates[d];
         const pos = (dd && dd.keywords[kw]) ? dd.keywords[kw].a : '';
-        tablesHtml += `<td style="${S_KW}" x:str>${pos}</td>`;
+        tablesHtml += `<td style="${S_KW_POS}" x:str>${pos}</td>`;
       }
       for (let i = 0; i < extraCols; i++) {
-        tablesHtml += `<td style="${S_KW}"></td>`;
+        tablesHtml += `<td style="${S_KW_POS}"></td>`;
       }
       tablesHtml += `</tr>\n`;
     }
