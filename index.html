@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>关键词排名管理系统</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: "等线", "DengXian", "Microsoft YaHei", sans-serif; background: #f0f2f5; color: #333; min-height: 100vh; }
+.header { background: linear-gradient(135deg, #1a73e8, #0d47a1); color: #fff; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; }
+.header h1 { font-size: 20px; font-weight: 600; }
+.container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+.card { background: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,.1); padding: 20px; margin-bottom: 16px; }
+.card-title { font-size: 16px; font-weight: 600; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #eee; display: flex; align-items: center; gap: 8px; }
+.btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-family: inherit; transition: all .2s; }
+.btn-primary { background: #1a73e8; color: #fff; }
+.btn-primary:hover { background: #1557b0; }
+.btn-success { background: #0d904f; color: #fff; }
+.btn-success:hover { background: #0a7a40; }
+.btn-danger { background: #d93025; color: #fff; }
+.btn-danger:hover { background: #b3261e; }
+.btn-outline { background: #fff; color: #1a73e8; border: 1px solid #1a73e8; }
+.btn-outline:hover { background: #e8f0fe; }
+.btn-sm { padding: 4px 10px; font-size: 12px; }
+.btn:disabled { opacity: .6; cursor: not-allowed; }
+textarea { width: 100%; min-height: 200px; padding: 12px; border: 1px solid #ddd; border-radius: 6px; font-family: 'Consolas', 'Monaco', monospace; font-size: 13px; resize: vertical; }
+textarea:focus { outline: none; border-color: #1a73e8; box-shadow: 0 0 0 2px rgba(26,115,232,.2); }
+.row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.col { flex: 1; min-width: 200px; }
+.alert { padding: 12px 16px; border-radius: 6px; margin-bottom: 12px; }
+.alert-warning { background: #fef7e0; color: #b06000; border: 1px solid #fce8b2; }
+.alert-success { background: #e6f4ea; color: #0d652d; border: 1px solid #a8dab5; }
+.alert-error { background: #fce8e6; color: #a50e0e; border: 1px solid #f6b8b0; }
+.alert-info { background: #e8f0fe; color: #174ea6; border: 1px solid #a8c7fa; }
+.tabs { display: flex; gap: 4px; margin-bottom: 12px; flex-wrap: wrap; }
+.tab { padding: 8px 16px; border: 1px solid #ddd; background: #f8f9fa; border-radius: 6px 6px 0 0; cursor: pointer; font-size: 13px; border-bottom: none; }
+.tab.active { background: #fff; font-weight: 600; color: #1a73e8; border-color: #1a73e8; }
+.tab:hover { background: #e8f0fe; }
+.table-container { overflow-x: auto; max-height: 600px; overflow-y: auto; }
+table.preview { border-collapse: collapse; font-size: 11px; font-family: "等线","DengXian",sans-serif; min-width: 100%; }
+table.preview td { border: .5pt solid #D0CECE; padding: 4px 8px; white-space: nowrap; }
+table.preview .td-date { text-align: center; background: #f8f9fa; font-weight: 600; }
+table.preview .td-rank { text-align: left; }
+table.preview .td-center { text-align: center; }
+table.preview .td-section { text-align: left; font-weight: bold; background: #F2F2F2; }
+table.preview .row-rank { height: 38px; }
+table.preview .row-normal { height: 26px; }
+.modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,.4); z-index: 1000; align-items: center; justify-content: center; }
+.modal-overlay.show { display: flex; }
+.modal { background: #fff; border-radius: 12px; padding: 24px; max-width: 500px; width: 90%; box-shadow: 0 8px 32px rgba(0,0,0,.2); }
+.modal h3 { margin-bottom: 12px; }
+.modal p { margin-bottom: 16px; color: #666; }
+.modal .conflict-list { max-height: 200px; overflow-y: auto; margin-bottom: 16px; font-size: 13px; }
+.modal .conflict-list div { padding: 4px 0; border-bottom: 1px solid #f0f0f0; }
+.modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid #fff; border-top-color: transparent; border-radius: 50%; animation: spin .6s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.status-bar { font-size: 12px; color: #666; margin-top: 8px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>📊 关键词排名管理系统</h1>
+  <div style="display:flex;gap:8px;">
+    <button class="btn btn-outline" onclick="refreshData()" style="color:#fff;border-color:rgba(255,255,255,.5);">🔄 刷新数据</button>
+    <button class="btn btn-success" onclick="exportExcel()">📥 导出全部 Excel</button>
+  </div>
+</div>
+
+<div class="container">
+  <!-- Import Section -->
+  <div class="card">
+    <div class="card-title">📥 导入 JSON 数据</div>
+    <textarea id="jsonInput" placeholder="粘贴 JSON 数据..."></textarea>
+    <div class="row" style="margin-top:12px;">
+      <button class="btn btn-primary" onclick="importData(false)">📤 提交数据</button>
+      <button class="btn btn-outline" onclick="document.getElementById('jsonInput').value=''">✕ 清空</button>
+    </div>
+    <div id="importStatus" style="margin-top:8px;"></div>
+  </div>
+
+  <!-- Conflict Modal -->
+  <div class="modal-overlay" id="conflictModal">
+    <div class="modal">
+      <h3>⚠️ 数据冲突检测</h3>
+      <p>以下产品/日期已有数据，是否覆盖？</p>
+      <div class="conflict-list" id="conflictList"></div>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="closeConflictModal()">取消</button>
+        <button class="btn btn-danger" onclick="importData(true)">确认覆盖</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Delete Modal -->
+  <div class="modal-overlay" id="deleteModal">
+    <div class="modal">
+      <h3>🗑️ 确认删除</h3>
+      <p id="deleteMsg"></p>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="closeDeleteModal()">取消</button>
+        <button class="btn btn-danger" id="deleteConfirmBtn">确认删除</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Preview Section -->
+  <div class="card">
+    <div class="card-title">📋 数据预览</div>
+    <div class="tabs" id="productTabs"></div>
+    <div class="table-container" id="previewTable"></div>
+    <div class="status-bar" id="statusBar"></div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

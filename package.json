@@ -1,0 +1,9 @@
+{
+  "name": "keyword-tracker",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler pages dev . --d1=keyword-tracker-db",
+    "deploy": "wrangler pages deploy ."
+  }
+}
