@@ -1,0 +1,6 @@
+tree 12f537a809e3b3475dcfdcd30c1bd15d3186f994
+parent 4e99a13deda806659cc7dcbbf0975c0e8f038962
+author Keyword Tracker Admin <admin@keyword-tracker.com> 1782374629 +0800
+committer Keyword Tracker Admin <admin@keyword-tracker.com> 1782374629 +0800
+
+Trigger re-deploy after D1 binding
