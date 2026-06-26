@@ -24,7 +24,11 @@ export async function onRequest(context) {
     data[r.asin].dates[r.date].keywords[r.keyword] = { n: r.natural_pos, a: r.ad_pos };
   }
 
-  const xml = generateXmlSpreadsheet(data);
+  const orderParam = url.searchParams.get('order') || '{}';
+  let kwOrder = {};
+  try { kwOrder = JSON.parse(orderParam); } catch(e) {}
+
+  const xml = generateXmlSpreadsheet(data, kwOrder);
   
   return new Response(xml, {
     status: 200,
@@ -41,7 +45,7 @@ function dateToSerial(iso) {
   return Math.round((d - base) / (1000 * 60 * 60 * 24));
 }
 
-function generateXmlSpreadsheet(data) {
+function generateXmlSpreadsheet(data, kwOrder) {
   const asins = Object.keys(data).sort();
   const allDates = new Set();
   for (const asin of asins) {
@@ -56,10 +60,17 @@ function generateXmlSpreadsheet(data) {
   for (const asin of asins) {
     const product = data[asin];
     const safeName = (product.name || asin).replace(/[\\\/\*\?\[\]:]/g, '-').substring(0, 31);
-    // Per-product keywords
+    // Per-product keywords with custom order
     const pKwSet = new Set();
     for (const dd of Object.values(product.dates)) for (const kw of Object.keys(dd.keywords)) pKwSet.add(kw);
-    const pKwList = [...pKwSet].sort();
+    const order = kwOrder[asin] || kwOrder || {};
+    const orderedN = [], orderedA = [], remaining = new Set(pKwSet);
+    for (const kw of (order.natural || [])) { if (remaining.has(kw)) { orderedN.push(kw); remaining.delete(kw); } }
+    for (const kw of (order.ad || [])) { if (remaining.has(kw)) { orderedA.push(kw); remaining.delete(kw); } }
+    // Note: orderedN and orderedA may share keywords; remaining only has unsorted ones
+    // For simplicity, use the union for both sections:
+    const fullOrdered = [...orderedN, ...orderedA, ...[...remaining].sort()];
+    const pKwList = [...new Set(fullOrdered)];
     
     sheets += `<Worksheet ss:Name="${xmlEsc(safeName)}">
 <Table>
@@ -88,11 +99,11 @@ ${kwRows(pKwList, sortedDates, product, 'a', extraCols)}
  xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
  xmlns:x="urn:schemas-microsoft-com:office:excel">
 <Styles>
-<Style ss:ID="date"><NumberFormat ss:Format="M"月"d"日""/></Style>
-<Style ss:ID="center"><Alignment ss:Horizontal="Center" ss:Vertical="Center"/></Style>
-<Style ss:ID="left"><Alignment ss:Horizontal="Left" ss:Vertical="Center" ss:WrapText="1"/></Style>
-<Style ss:ID="section"><Alignment ss:Horizontal="Left" ss:Vertical="Center"/><Interior ss:Color="#5B9BD5" ss:Pattern="Solid"/><Font ss:Color="#FFFFFF" ss:Bold="1"/></Style>
-<Style ss:ID="bold"><Font ss:Bold="1"/></Style>
+<Style ss:ID="date"><Font ss:FontName="等线" ss:Size="11"/><NumberFormat ss:Format="M\月d\日"/><Alignment ss:Horizontal="Center" ss:Vertical="Center"/></Style>
+<Style ss:ID="center"><Font ss:FontName="等线" ss:Size="11"/><Alignment ss:Horizontal="Center" ss:Vertical="Center"/></Style>
+<Style ss:ID="left"><Font ss:FontName="等线" ss:Size="11"/><Alignment ss:Horizontal="Left" ss:Vertical="Center" ss:WrapText="1"/></Style>
+<Style ss:ID="rank"><Font ss:FontName="等线" ss:Size="10"/><Alignment ss:Horizontal="Left" ss:Vertical="Center" ss:WrapText="1"/></Style>
+<Style ss:ID="section"><Font ss:FontName="等线" ss:Size="11" ss:Color="#FFFFFF" ss:Bold="1"/><Alignment ss:Horizontal="Left" ss:Vertical="Center"/><Interior ss:Color="#5B9BD5" ss:Pattern="Solid"/></Style>
 </Styles>
 ${sheets}
 </Workbook>`;
@@ -121,8 +132,8 @@ function rankRow(dates, product, asin, extra) {
   for (const d of dates) {
     const dd = product.dates[d];
     let rank = dd ? (dd.rank || '') : '';
-    rank = rank.replace(/\s+#/g, '\n#');
-    s += `<Cell ss:StyleID="left"><Data ss:Type="String">${xmlEsc(rank)}</Data></Cell>`;
+    rank = xmlEsc(rank).replace(/(.)\s*#(\d)/g, '$1&#10;#$2').replace(/^&#10;/, '');
+    s += `<Cell ss:StyleID="rank"><Data ss:Type="String">${rank}</Data></Cell>`;
   }
   for (let i = 0; i < extra; i++) s += '<Cell ss:StyleID="left"></Cell>';
   s += '</Row>\n';
