@@ -118,8 +118,22 @@ function closeConflictModal() { document.getElementById('conflictModal').classLi
 // ========== Export ==========
 
 async function exportExcel() {
-  const asin = activeTab || '';
-  const url = asin ? `/api/export?asin=${asin}` : '/api/export';
+  // Always export all products
+  const url = '/api/export';
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error('Export failed');
+    const blob = await resp.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = '\u5173\u952E\u8BCD\u8BB0\u5F55.xls';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  } catch (err) { alert('导出失败: ' + err.message); }
+}
+
+async function exportSingle(asin) {
+  const url = '/api/export?asin=' + encodeURIComponent(asin);
   try {
     const resp = await fetch(url);
     if (!resp.ok) throw new Error('Export failed');
@@ -297,7 +311,7 @@ function renderPreview() {
   html += '<div class="row" style="margin-top:8px;">';
   html += '<button class="btn btn-danger btn-sm" onclick="showDeleteModal(\'' + asin + '\')">🗑 删除数据</button>';
   html += '<span style="flex:1;"></span>';
-  html += '<button class="btn btn-outline btn-sm" onclick="exportExcel()">📥 导出此产品</button>';
+  html += '<button class="btn btn-outline btn-sm" onclick="exportSingle(\'' + asin + '\')">📥 导出此产品</button>';
   html += '</div>';
   
   container.innerHTML = html;
