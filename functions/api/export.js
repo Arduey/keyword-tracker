@@ -1,4 +1,4 @@
-// GET /api/export — Generate Excel HTML file
+// GET /api/export — Generate Excel HTML file (single sheet, all products)
 export async function onRequest(context) {
   const { request, env } = context;
   const db = env.DB;
@@ -24,7 +24,7 @@ export async function onRequest(context) {
     data[r.asin].dates[r.date].keywords[r.keyword] = { n: r.natural_pos, a: r.ad_pos };
   }
 
-  const html = generateMultiSheetHtml(data);
+  const html = generateSingleSheetHtml(data);
   
   return new Response(html, {
     status: 200,
@@ -55,7 +55,7 @@ function calcColWidth(text, isDate) {
   return Math.max(80, Math.min(w + 20, 280));
 }
 
-function generateMultiSheetHtml(data) {
+function generateSingleSheetHtml(data) {
   const asins = Object.keys(data).sort();
   const allKeywords = new Set();
   const allDates = new Set();
@@ -70,104 +70,87 @@ function generateMultiSheetHtml(data) {
   const extraCols = 5;
   
   const kwColWidth = Math.max(160, ...keywordList.map(k => calcColWidth(k)));
-  const dateColWidth = Math.max(100, ...sortedDates.map(d => calcColWidth(formatDateChinese(d), true)));
+  const dateColWidth = 120;
   
-  // On Chinese Windows, "DengXian" auto-maps to 等线 font
   const FONT = '"DengXian",sans-serif';
   const FS = '11pt';
   const H_RANK = '28.9pt';
   const H_NORM = '20.1pt';
-  
-  let sheetsXml = '';
-  let tablesHtml = '';
-  const activeCol = sortedDates.length;
+  const S_DATE = `text-align:center;vertical-align:middle;font-family:${FONT};font-size:${FS};`;
+  const S_RANK = `text-align:left;vertical-align:middle;font-family:${FONT};font-size:${FS};white-space:normal;`;
+  const S_CENTER = `text-align:center;vertical-align:middle;font-family:${FONT};font-size:${FS};`;
+  const S_SEC = `text-align:left;vertical-align:middle;font-family:${FONT};font-size:${FS};font-weight:bold;background:#5B9BD5;color:#FFFFFF;`;
+  const S_KW_POS = `text-align:center;vertical-align:middle;font-family:${FONT};font-size:${FS};`;
+  const S_KW = `text-align:left;vertical-align:middle;font-family:${FONT};font-size:${FS};`;
+
+  let html = `<table border="0" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">`;
+  html += `<col width="${kwColWidth}" style="mso-width-source:userset;"/>`;
+  for (const d of sortedDates) html += `<col width="${dateColWidth}" style="mso-width-source:userset;"/>`;
+  for (let i = 0; i < extraCols; i++) html += `<col width="${dateColWidth}" style="mso-width-source:userset;"/>`;
 
   for (const asin of asins) {
     const product = data[asin];
-    const safeName = (product.name || asin).replace(/[\\\/\*\?\[\]:]/g, '-').substring(0, 31);
-    
-    sheetsXml += `<x:ExcelWorksheet><x:Name>${safeName}</x:Name><x:WorksheetOptions>
-<x:FreezePanes/><x:FrozenNoSplit/>
-<x:SplitHorizontal>3</x:SplitHorizontal><x:TopRowBottomPane>3</x:TopRowBottomPane>
-<x:SplitVertical>1</x:SplitVertical><x:LeftColumnRightPane>1</x:LeftColumnRightPane>
-<x:ActivePane>0</x:ActivePane>
-<x:ActiveCol>${activeCol}</x:ActiveCol><x:ActiveRow>0</x:ActiveRow>
-<x:DefaultRowHeight>300</x:DefaultRowHeight>
-</x:WorksheetOptions></x:ExcelWorksheet>`;
-    
-    tablesHtml += `<table border="0" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">`;
-    tablesHtml += `<col width="${kwColWidth}" style="mso-width-source:userset;"/>`;
-    for (const d of sortedDates) tablesHtml += `<col width="${dateColWidth}" style="mso-width-source:userset;"/>`;
-    for (let i = 0; i < extraCols; i++) tablesHtml += `<col width="${dateColWidth}" style="mso-width-source:userset;"/>`;
-    
-    // Row 1: Product + dates
-    tablesHtml += `<tr height="20.1" style="height:${H_NORM};"><td style="text-align:center;vertical-align:middle;font-family:${FONT};font-size:${FS};font-weight:bold;" x:str>${esc(product.name)}</td>`;
-    for (const d of sortedDates) {
-      tablesHtml += `<td style="text-align:center;vertical-align:middle;font-family:${FONT};font-size:${FS};" x:num="${dateToSerial(d)}.">${formatDateChinese(d)}</td>`;
-    }
-    for (let i = 0; i < extraCols; i++) tablesHtml += `<td style="text-align:center;vertical-align:middle;font-family:${FONT};font-size:${FS};"></td>`;
-    tablesHtml += `</tr>\n`;
-    
-    // Row 2: ASIN + rank (multi-line, # starts new line via <br>)
-    tablesHtml += `<tr height="28.9" style="height:${H_RANK};"><td style="text-align:left;vertical-align:middle;font-family:${FONT};font-size:${FS};font-weight:bold;" x:str>${esc(asin)}</td>`;
+    const totalCols = 1 + sortedDates.length + extraCols;
+
+    // Product separator row
+    html += `<tr height="20.1" style="height:${H_NORM};"><td style="${S_DATE}font-weight:bold;background:#4472C4;color:#fff;" colspan="${totalCols}" x:str>${esc(product.name)} (${esc(asin)})</td></tr>\n`;
+
+    // Headers
+    html += `<tr height="20.1" style="height:${H_NORM};"><td style="${S_DATE}font-weight:bold;">指标</td>`;
+    for (const d of sortedDates) html += `<td style="${S_DATE}" x:num="${dateToSerial(d)}.">${formatDateChinese(d)}</td>`;
+    for (let i = 0; i < extraCols; i++) html += `<td style="${S_DATE}"></td>`;
+    html += `</tr>\n`;
+
+    // Rank row
+    html += `<tr height="28.9" style="height:${H_RANK};"><td style="text-align:left;vertical-align:middle;font-family:${FONT};font-size:${FS};font-weight:bold;">Rank</td>`;
     for (const d of sortedDates) {
       const dd = product.dates[d];
       let rank = dd ? (dd.rank || '') : '';
       rank = rank.replace(/(.)#(\d)/g, '$1<br>#$2');
-      tablesHtml += `<td style="text-align:left;vertical-align:middle;font-family:${FONT};font-size:${FS};white-space:normal;">${rank}</td>`;
+      html += `<td style="${S_RANK}">${rank}</td>`;
     }
-    for (let i = 0; i < extraCols; i++) tablesHtml += `<td style="text-align:left;vertical-align:middle;font-family:${FONT};font-size:${FS};"></td>`;
-    tablesHtml += `</tr>\n`;
-    
-    // Row 3: Rating / Review
-    tablesHtml += `<tr height="20.1" style="height:${H_NORM};"><td style="text-align:center;vertical-align:middle;font-family:${FONT};font-size:${FS};"></td>`;
+    for (let i = 0; i < extraCols; i++) html += `<td style="${S_RANK}"></td>`;
+    html += `</tr>\n`;
+
+    // Rating row
+    html += `<tr height="20.1" style="height:${H_NORM};"><td style="${S_CENTER}">评分 / 评论</td>`;
     for (const d of sortedDates) {
       const dd = product.dates[d];
-      tablesHtml += `<td style="text-align:center;vertical-align:middle;font-family:${FONT};font-size:${FS};" x:str>${dd ? dd.rating + ' - ' + dd.reviewCount : ''}</td>`;
+      html += `<td style="${S_CENTER}" x:str>${dd ? dd.rating + ' - ' + dd.reviewCount : ''}</td>`;
     }
-    for (let i = 0; i < extraCols; i++) tablesHtml += `<td style="text-align:center;vertical-align:middle;font-family:${FONT};font-size:${FS};"></td>`;
-    tablesHtml += `</tr>\n`;
-    
+    for (let i = 0; i < extraCols; i++) html += `<td style="${S_CENTER}"></td>`;
+    html += `</tr>\n`;
+
     // Natural section
-    const S_SEC = `text-align:left;vertical-align:middle;font-family:${FONT};font-size:${FS};font-weight:bold;background:#5B9BD5;color:#FFFFFF;`;
-    tablesHtml += `<tr height="20.1" style="height:${H_NORM};"><td style="${S_SEC}" x:str>自然位-精准词</td>`;
-    for (let i = 0; i < sortedDates.length + extraCols; i++) tablesHtml += `<td style="${S_SEC}"></td>`;
-    tablesHtml += `</tr>\n`;
-    
+    html += `<tr height="20.1" style="height:${H_NORM};"><td style="${S_SEC}" colspan="${totalCols}" x:str>自然位-精准词</td></tr>\n`;
     for (const kw of keywordList) {
-      tablesHtml += `<tr height="20.1" style="height:${H_NORM};"><td style="text-align:left;vertical-align:middle;font-family:${FONT};font-size:${FS};" x:str>${esc(kw)}</td>`;
+      html += `<tr height="20.1" style="height:${H_NORM};"><td style="${S_KW}" x:str>${esc(kw)}</td>`;
       for (const d of sortedDates) {
         const dd = product.dates[d];
-        const pos = (dd && dd.keywords[kw]) ? dd.keywords[kw].n : '';
-        tablesHtml += `<td style="text-align:center;vertical-align:middle;font-family:${FONT};font-size:${FS};" x:str>${pos}</td>`;
+        html += `<td style="${S_KW_POS}" x:str>${(dd && dd.keywords[kw]) ? dd.keywords[kw].n : ''}</td>`;
       }
-      for (let i = 0; i < extraCols; i++) tablesHtml += `<td style="text-align:center;vertical-align:middle;font-family:${FONT};font-size:${FS};"></td>`;
-      tablesHtml += `</tr>\n`;
+      for (let i = 0; i < extraCols; i++) html += `<td style="${S_KW_POS}"></td>`;
+      html += `</tr>\n`;
     }
-    
-    tablesHtml += `<tr height="15.75" style="height:15.75pt;"><td></td>`;
-    for (let i = 0; i < sortedDates.length + extraCols; i++) tablesHtml += `<td></td>`;
-    tablesHtml += `</tr>\n`;
-    
+
     // Ad section
-    tablesHtml += `<tr height="20.1" style="height:${H_NORM};"><td style="${S_SEC}" x:str>广告位-精准词</td>`;
-    for (let i = 0; i < sortedDates.length + extraCols; i++) tablesHtml += `<td style="${S_SEC}"></td>`;
-    tablesHtml += `</tr>\n`;
-    
+    html += `<tr height="20.1" style="height:${H_NORM};"><td style="${S_SEC}" colspan="${totalCols}" x:str>广告位-精准词</td></tr>\n`;
     for (const kw of keywordList) {
-      tablesHtml += `<tr height="20.1" style="height:${H_NORM};"><td style="text-align:left;vertical-align:middle;font-family:${FONT};font-size:${FS};" x:str>${esc(kw)}</td>`;
+      html += `<tr height="20.1" style="height:${H_NORM};"><td style="${S_KW}" x:str>${esc(kw)}</td>`;
       for (const d of sortedDates) {
         const dd = product.dates[d];
-        const pos = (dd && dd.keywords[kw]) ? dd.keywords[kw].a : '';
-        tablesHtml += `<td style="text-align:center;vertical-align:middle;font-family:${FONT};font-size:${FS};" x:str>${pos}</td>`;
+        html += `<td style="${S_KW_POS}" x:str>${(dd && dd.keywords[kw]) ? dd.keywords[kw].a : ''}</td>`;
       }
-      for (let i = 0; i < extraCols; i++) tablesHtml += `<td style="text-align:center;vertical-align:middle;font-family:${FONT};font-size:${FS};"></td>`;
-      tablesHtml += `</tr>\n`;
+      for (let i = 0; i < extraCols; i++) html += `<td style="${S_KW_POS}"></td>`;
+      html += `</tr>\n`;
     }
-    
-    tablesHtml += `</table>\n`;
+
+    // Empty separator between products
+    html += `<tr height="15.75" style="height:15.75pt;"><td colspan="${totalCols}"></td></tr>\n`;
   }
-  
+
+  html += `</table>`;
+
   return `<!DOCTYPE html>
 <html xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
 <head>
@@ -177,11 +160,17 @@ function generateMultiSheetHtml(data) {
 <meta name="Generator" content="Keyword Rank Tracker">
 <style>@page {margin:1.00in 0.75in 1.00in 0.75in; mso-header-margin:0.50in; mso-footer-margin:0.50in;}</style>
 <!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets>
-${sheetsXml}
+<x:ExcelWorksheet><x:Name>关键词记录</x:Name><x:WorksheetOptions>
+<x:FreezePanes/><x:FrozenNoSplit/>
+<x:SplitHorizontal>1</x:SplitHorizontal><x:TopRowBottomPane>1</x:TopRowBottomPane>
+<x:SplitVertical>1</x:SplitVertical><x:LeftColumnRightPane>1</x:LeftColumnRightPane>
+<x:ActivePane>0</x:ActivePane>
+<x:DefaultRowHeight>300</x:DefaultRowHeight>
+</x:WorksheetOptions></x:ExcelWorksheet>
 </x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]-->
 </head>
 <body>
-${tablesHtml}
+${html}
 </body>
 </html>`;
 }

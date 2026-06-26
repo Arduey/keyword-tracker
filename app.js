@@ -126,7 +126,7 @@ async function exportExcel() {
     const blob = await resp.blob();
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = asin ? `keyword-rankings-${asin}.xls` : 'keyword-rankings-all.xls';
+    a.download = '\u5173\u952E\u8BCD\u8BB0\u5F55.xls';
     a.click();
     URL.revokeObjectURL(a.href);
   } catch (err) { alert('导出失败: ' + err.message); }
