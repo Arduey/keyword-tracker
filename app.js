@@ -258,7 +258,7 @@ function renderPreview() {
   html += '<tr class="row-rank"><td class="td-rank" style="font-weight:bold;">Rank</td>';
   for (const d of dates) {
     const dd = product.dates[d];
-    const rank = dd ? (dd.rank || '').replace(/\s+#/g, '<br>#') : '';
+    const rank = dd ? (dd.rank || '').replace(/(.)#(\d)/g, '$1<br>#$2') : '';
     html += '<td class="td-rank">' + rank + '</td>';
   }
   html += '</tr>';

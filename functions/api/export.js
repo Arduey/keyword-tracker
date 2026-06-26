@@ -72,7 +72,8 @@ function generateMultiSheetHtml(data) {
   const kwColWidth = Math.max(160, ...keywordList.map(k => calcColWidth(k)));
   const dateColWidth = Math.max(100, ...sortedDates.map(d => calcColWidth(formatDateChinese(d), true)));
   
-  const FONT = '"等线","DengXian",sans-serif';
+  const DENGXIAN = String.fromCodePoint(0x7B49, 0x7EBF);
+  const FONT = '"' + DENGXIAN + '","DengXian",sans-serif';
   const FS = '11pt';
   const H_RANK = '28.9pt';
   const H_NORM = '20.1pt';
@@ -112,7 +113,7 @@ function generateMultiSheetHtml(data) {
     for (const d of sortedDates) {
       const dd = product.dates[d];
       let rank = dd ? (dd.rank || '') : '';
-      rank = rank.replace(/\s+#/g, '<br>#');
+      rank = rank.replace(/(.)#(\d)/g, '$1<br>#$2');
       tablesHtml += `<td style="text-align:left;vertical-align:middle;font-family:${FONT};font-size:${FS};white-space:normal;">${rank}</td>`;
     }
     for (let i = 0; i < extraCols; i++) tablesHtml += `<td style="text-align:left;vertical-align:middle;font-family:${FONT};font-size:${FS};"></td>`;
