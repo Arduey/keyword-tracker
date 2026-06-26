@@ -6,3 +6,4 @@ dist/
 wrangler-run.bat
 _worker.js/
 .git-rewrite/
+test*.xls
