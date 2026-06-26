@@ -1,4 +1,4 @@
-// GET /api/export — Generate Excel HTML file
+// GET /api/export — Excel XML Spreadsheet (native multi-sheet)
 export async function onRequest(context) {
   const { request, env } = context;
   const db = env.DB;
@@ -24,21 +24,15 @@ export async function onRequest(context) {
     data[r.asin].dates[r.date].keywords[r.keyword] = { n: r.natural_pos, a: r.ad_pos };
   }
 
-  const html = generateSheetHtml(data);
+  const xml = generateXmlSpreadsheet(data);
   
-  return new Response(html, {
+  return new Response(xml, {
     status: 200,
     headers: {
-      'Content-Type': 'text/html; charset=UTF-8',
-      'Content-Disposition': "attachment; filename*=UTF-8''%E5%85%B3%E9%94%AE%E8%AF%8D%E8%AE%B0%E5%BD%95.xls"
+      'Content-Type': 'application/vnd.ms-excel; charset=UTF-8',
+      'Content-Disposition': 'attachment; filename="keyword-rankings.xls"'
     }
   });
-}
-
-function formatDateChinese(iso) {
-  const p = iso.split('-');
-  if (p.length !== 3) return iso;
-  return parseInt(p[1]) + '\u6708' + parseInt(p[2]) + '\u65E5';
 }
 
 function dateToSerial(iso) {
@@ -47,122 +41,137 @@ function dateToSerial(iso) {
   return Math.round((d - base) / (1000 * 60 * 60 * 24));
 }
 
-function generateSheetHtml(data) {
+function generateXmlSpreadsheet(data) {
   const asins = Object.keys(data).sort();
-  const allKeywords = new Set();
   const allDates = new Set();
   for (const asin of asins) {
-    for (const [d, dd] of Object.entries(data[asin].dates)) {
-      allDates.add(d);
-      for (const kw of Object.keys(dd.keywords)) allKeywords.add(kw);
-    }
+    for (const d of Object.keys(data[asin].dates)) allDates.add(d);
   }
-  const keywordList = [...allKeywords].sort();
   const sortedDates = [...allDates].sort();
   const extraCols = 5;
   const totalCols = 1 + sortedDates.length + extraCols;
-  
-  const FONT = '"DengXian",sans-serif';
-  const FS = '11pt';
-  const H_RANK = '28.9pt';
-  const H_NORM = '20.1pt';
-  const S_DATE = `text-align:center;vertical-align:middle;font-family:${FONT};font-size:${FS};`;
-  const S_RANK = `text-align:left;vertical-align:middle;font-family:${FONT};font-size:${FS};white-space:normal;`;
-  const S_CENTER = `text-align:center;vertical-align:middle;font-family:${FONT};font-size:${FS};`;
-  const S_SEC = `text-align:left;vertical-align:middle;font-family:${FONT};font-size:${FS};font-weight:bold;background:#5B9BD5;color:#FFFFFF;`;
-  const S_KW_POS = `text-align:center;vertical-align:middle;font-family:${FONT};font-size:${FS};`;
-  const S_KW = `text-align:left;vertical-align:middle;font-family:${FONT};font-size:${FS};`;
 
-  let html = `<table border="0" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">`;
+  let sheets = '';
   
-  // Header row: dates
-  html += `<tr height="20.1" style="height:${H_NORM};"><td></td>`;
-  for (const d of sortedDates) html += `<td style="${S_DATE}" x:num="${dateToSerial(d)}.">${formatDateChinese(d)}</td>`;
-  for (let i = 0; i < extraCols; i++) html += `<td style="${S_DATE}"></td>`;
-  html += `</tr>\n`;
-
   for (const asin of asins) {
     const product = data[asin];
+    const safeName = (product.name || asin).replace(/[\\\/\*\?\[\]:]/g, '-').substring(0, 31);
+    // Per-product keywords
+    const pKwSet = new Set();
+    for (const dd of Object.values(product.dates)) for (const kw of Object.keys(dd.keywords)) pKwSet.add(kw);
+    const pKwList = [...pKwSet].sort();
     
-    // Product separator
-    html += `<tr height="20.1" style="height:${H_NORM};"><td style="${S_DATE}font-weight:bold;background:#4472C4;color:#fff;" colspan="${totalCols}" x:str>${esc(product.name)} (${esc(asin)})</td></tr>\n`;
-    
-    // Rank
-    html += `<tr height="28.9" style="height:${H_RANK};"><td style="text-align:left;vertical-align:middle;font-family:${FONT};font-size:${FS};font-weight:bold;">Rank</td>`;
-    for (const d of sortedDates) {
-      const dd = product.dates[d];
-      let rank = dd ? (dd.rank || '') : '';
-      rank = rank.replace(/(.)#(\d)/g, '$1<br>#$2');
-      html += `<td style="${S_RANK}">${rank}</td>`;
-    }
-    for (let i = 0; i < extraCols; i++) html += `<td style="${S_RANK}"></td>`;
-    html += `</tr>\n`;
-
-    // Rating
-    html += `<tr height="20.1" style="height:${H_NORM};"><td style="${S_CENTER}">评分/评论</td>`;
-    for (const d of sortedDates) {
-      const dd = product.dates[d];
-      html += `<td style="${S_CENTER}" x:str>${dd ? dd.rating + ' - ' + dd.reviewCount : ''}</td>`;
-    }
-    for (let i = 0; i < extraCols; i++) html += `<td style="${S_CENTER}"></td>`;
-    html += `</tr>\n`;
-
-    // Natural
-    html += `<tr height="20.1" style="height:${H_NORM};"><td style="${S_SEC}" colspan="${totalCols}" x:str>自然位-精准词</td></tr>\n`;
-    for (const kw of keywordList) {
-      html += `<tr height="20.1" style="height:${H_NORM};"><td style="${S_KW}" x:str>${esc(kw)}</td>`;
-      for (const d of sortedDates) {
-        const dd = product.dates[d];
-        html += `<td style="${S_KW_POS}" x:str>${(dd && dd.keywords[kw]) ? dd.keywords[kw].n : ''}</td>`;
-      }
-      for (let i = 0; i < extraCols; i++) html += `<td style="${S_KW_POS}"></td>`;
-      html += `</tr>\n`;
-    }
-
-    // Ad
-    html += `<tr height="20.1" style="height:${H_NORM};"><td style="${S_SEC}" colspan="${totalCols}" x:str>广告位-精准词</td></tr>\n`;
-    for (const kw of keywordList) {
-      html += `<tr height="20.1" style="height:${H_NORM};"><td style="${S_KW}" x:str>${esc(kw)}</td>`;
-      for (const d of sortedDates) {
-        const dd = product.dates[d];
-        html += `<td style="${S_KW_POS}" x:str>${(dd && dd.keywords[kw]) ? dd.keywords[kw].a : ''}</td>`;
-      }
-      for (let i = 0; i < extraCols; i++) html += `<td style="${S_KW_POS}"></td>`;
-      html += `</tr>\n`;
-    }
-
-    // Empty separator
-    html += `<tr height="10" style="height:7.5pt;"><td colspan="${totalCols}" style="background:#f0f0f0;"></td></tr>\n`;
+    sheets += `<Worksheet ss:Name="${xmlEsc(safeName)}">
+<Table>
+${colDefs(totalCols)}
+${headerRow(sortedDates, xmlEsc(product.name), extraCols)}
+${rankRow(sortedDates, product, xmlEsc(asin), extraCols)}
+${ratingRow(sortedDates, product, extraCols)}
+${sectionRow('自然位-精准词', totalCols)}
+${kwRows(pKwList, sortedDates, product, 'n', extraCols)}
+${emptyRow(totalCols)}
+${sectionRow('广告位-精准词', totalCols)}
+${kwRows(pKwList, sortedDates, product, 'a', extraCols)}
+</Table>
+<WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">
+<FreezePanes/><FrozenNoSplit/>
+<SplitHorizontal>3</SplitHorizontal><TopRowBottomPane>3</TopRowBottomPane>
+<SplitVertical>1</SplitVertical><LeftColumnRightPane>1</LeftColumnRightPane>
+</WorksheetOptions>
+</Worksheet>
+`;
   }
 
-  html += `</table>`;
-
-  const activeCol = sortedDates.length;
-  return `<!DOCTYPE html>
-<html xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
-<head>
-<meta charset="UTF-8">
-<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-<meta name="ProgId" content="Excel.Sheet">
-<meta name="Generator" content="Keyword Rank Tracker">
-<style>@page {margin:1.00in 0.75in 1.00in 0.75in; mso-header-margin:0.50in; mso-footer-margin:0.50in;}</style>
-<!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets>
-<x:ExcelWorksheet><x:Name>关键词记录</x:Name><x:WorksheetOptions>
-<x:FreezePanes/><x:FrozenNoSplit/>
-<x:SplitHorizontal>1</x:SplitHorizontal><x:TopRowBottomPane>1</x:TopRowBottomPane>
-<x:SplitVertical>1</x:SplitVertical><x:LeftColumnRightPane>1</x:LeftColumnRightPane>
-<x:ActivePane>0</x:ActivePane>
-<x:ActiveCol>${activeCol}</x:ActiveCol><x:ActiveRow>0</x:ActiveRow>
-<x:DefaultRowHeight>300</x:DefaultRowHeight>
-</x:WorksheetOptions></x:ExcelWorksheet>
-</x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]-->
-</head>
-<body>
-${html}
-</body>
-</html>`;
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:x="urn:schemas-microsoft-com:office:excel">
+<Styles>
+<Style ss:ID="date"><NumberFormat ss:Format="M"月"d"日""/></Style>
+<Style ss:ID="center"><Alignment ss:Horizontal="Center" ss:Vertical="Center"/></Style>
+<Style ss:ID="left"><Alignment ss:Horizontal="Left" ss:Vertical="Center" ss:WrapText="1"/></Style>
+<Style ss:ID="section"><Alignment ss:Horizontal="Left" ss:Vertical="Center"/><Interior ss:Color="#5B9BD5" ss:Pattern="Solid"/><Font ss:Color="#FFFFFF" ss:Bold="1"/></Style>
+<Style ss:ID="bold"><Font ss:Bold="1"/></Style>
+</Styles>
+${sheets}
+</Workbook>`;
 }
 
-function esc(s) {
+function colDefs(n) {
+  let s = '';
+  for (let i = 0; i < n; i++) s += '<Column ss:Width="120"/>\n';
+  return s;
+}
+
+function headerRow(dates, name, extra) {
+  let s = '<Row ss:Height="20">';
+  s += `<Cell ss:StyleID="center"><Data ss:Type="String">${xmlEsc(name)}</Data></Cell>`;
+  for (const d of dates) {
+    s += `<Cell ss:StyleID="date"><Data ss:Type="Number">${dateToSerial(d)}</Data></Cell>`;
+  }
+  for (let i = 0; i < extra; i++) s += '<Cell ss:StyleID="center"></Cell>';
+  s += '</Row>\n';
+  return s;
+}
+
+function rankRow(dates, product, asin, extra) {
+  let s = '<Row ss:Height="29">';
+  s += `<Cell ss:StyleID="left"><Data ss:Type="String">${xmlEsc(asin)}</Data></Cell>`;
+  for (const d of dates) {
+    const dd = product.dates[d];
+    let rank = dd ? (dd.rank || '') : '';
+    rank = rank.replace(/\s+#/g, '\n#');
+    s += `<Cell ss:StyleID="left"><Data ss:Type="String">${xmlEsc(rank)}</Data></Cell>`;
+  }
+  for (let i = 0; i < extra; i++) s += '<Cell ss:StyleID="left"></Cell>';
+  s += '</Row>\n';
+  return s;
+}
+
+function ratingRow(dates, product, extra) {
+  let s = '<Row ss:Height="20">';
+  s += '<Cell ss:StyleID="center"></Cell>';
+  for (const d of dates) {
+    const dd = product.dates[d];
+    s += `<Cell ss:StyleID="center"><Data ss:Type="String">${dd ? dd.rating + ' - ' + dd.reviewCount : ''}</Data></Cell>`;
+  }
+  for (let i = 0; i < extra; i++) s += '<Cell ss:StyleID="center"></Cell>';
+  s += '</Row>\n';
+  return s;
+}
+
+function sectionRow(title, cols) {
+  let s = '<Row ss:Height="20">';
+  s += `<Cell ss:StyleID="section"><Data ss:Type="String">${xmlEsc(title)}</Data></Cell>`;
+  for (let i = 1; i < cols; i++) s += '<Cell ss:StyleID="section"></Cell>';
+  s += '</Row>\n';
+  return s;
+}
+
+function kwRows(kwList, dates, product, type, extra) {
+  let s = '';
+  for (const kw of kwList) {
+    s += '<Row ss:Height="20">';
+    s += `<Cell ss:StyleID="left"><Data ss:Type="String">${xmlEsc(kw)}</Data></Cell>`;
+    for (const d of dates) {
+      const dd = product.dates[d];
+      const pos = (dd && dd.keywords[kw]) ? dd.keywords[kw][type] : '';
+      s += `<Cell ss:StyleID="center"><Data ss:Type="String">${xmlEsc(pos)}</Data></Cell>`;
+    }
+    for (let i = 0; i < extra; i++) s += '<Cell ss:StyleID="center"></Cell>';
+    s += '</Row>\n';
+  }
+  return s;
+}
+
+function emptyRow(cols) {
+  let s = '<Row ss:Height="16">';
+  for (let i = 0; i < cols; i++) s += '<Cell></Cell>';
+  s += '</Row>\n';
+  return s;
+}
+
+function xmlEsc(s) {
   return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
