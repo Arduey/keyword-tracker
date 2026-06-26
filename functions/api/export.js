@@ -30,7 +30,7 @@ export async function onRequest(context) {
     status: 200,
     headers: {
       'Content-Type': 'text/html; charset=UTF-8',
-      'Content-Disposition': 'attachment; filename="\u5173\u952E\u8BCD\u8BB0\u5F55.xls"'
+      'Content-Disposition': "attachment; filename*=UTF-8''%E5%85%B3%E9%94%AE%E8%AF%8D%E8%AE%B0%E5%BD%95.xls"
     }
   });
 }
@@ -72,8 +72,8 @@ function generateMultiSheetHtml(data) {
   const kwColWidth = Math.max(160, ...keywordList.map(k => calcColWidth(k)));
   const dateColWidth = Math.max(100, ...sortedDates.map(d => calcColWidth(formatDateChinese(d), true)));
   
-  const DENGXIAN = String.fromCodePoint(0x7B49, 0x7EBF);
-  const FONT = '"' + DENGXIAN + '","DengXian",sans-serif';
+  // On Chinese Windows, "DengXian" auto-maps to 等线 font
+  const FONT = '"DengXian",sans-serif';
   const FS = '11pt';
   const H_RANK = '28.9pt';
   const H_NORM = '20.1pt';
@@ -171,6 +171,7 @@ function generateMultiSheetHtml(data) {
   return `<!DOCTYPE html>
 <html xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
 <head>
+<meta charset="UTF-8">
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
 <meta name="ProgId" content="Excel.Sheet">
 <meta name="Generator" content="Keyword Rank Tracker">
