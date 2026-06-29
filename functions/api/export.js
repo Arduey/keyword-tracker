@@ -84,11 +84,12 @@ ${emptyRow(totalCols)}
 ${sectionRow('广告位-精准词', totalCols)}
 ${kwRows(pKwList, sortedDates, product, 'a', extraCols)}
 </Table>
-<WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">
+<x:WorksheetOptions>
 <FreezePanes/><FrozenNoSplit/>
 <SplitHorizontal>3</SplitHorizontal><TopRowBottomPane>3</TopRowBottomPane>
 <SplitVertical>1</SplitVertical><LeftColumnRightPane>1</LeftColumnRightPane>
-</WorksheetOptions>
+<x:ActiveCol>${sortedDates.length}</x:ActiveCol><x:ActiveRow>0</x:ActiveRow>
+</x:WorksheetOptions>
 </Worksheet>
 `;
   }
@@ -102,7 +103,7 @@ ${kwRows(pKwList, sortedDates, product, 'a', extraCols)}
 <Style ss:ID="date"><Font ss:FontName="等线" ss:Size="11"/><NumberFormat ss:Format="M\月d\日"/><Alignment ss:Horizontal="Center" ss:Vertical="Center"/></Style>
 <Style ss:ID="center"><Font ss:FontName="等线" ss:Size="11"/><Alignment ss:Horizontal="Center" ss:Vertical="Center"/></Style>
 <Style ss:ID="left"><Font ss:FontName="等线" ss:Size="11"/><Alignment ss:Horizontal="Left" ss:Vertical="Center" ss:WrapText="1"/></Style>
-<Style ss:ID="rank"><Font ss:FontName="等线" ss:Size="10"/><Alignment ss:Horizontal="Left" ss:Vertical="Center" ss:WrapText="1"/></Style>
+<Style ss:ID="rank"><Font ss:FontName="等线" ss:Size="8"/><Alignment ss:Horizontal="Left" ss:Vertical="Center" ss:WrapText="1"/></Style>
 <Style ss:ID="section"><Font ss:FontName="等线" ss:Size="11" ss:Color="#FFFFFF" ss:Bold="1"/><Alignment ss:Horizontal="Left" ss:Vertical="Center"/><Interior ss:Color="#5B9BD5" ss:Pattern="Solid"/></Style>
 </Styles>
 ${sheets}
@@ -132,7 +133,8 @@ function rankRow(dates, product, asin, extra) {
   for (const d of dates) {
     const dd = product.dates[d];
     let rank = dd ? (dd.rank || '') : '';
-    rank = xmlEsc(rank).replace(/(.)\s*#(\d)/g, '$1&#10;#$2').replace(/^&#10;/, '');
+    // Use actual newline for Excel WrapText
+rank = xmlEsc(rank).replace(/\s+#/g, '\n#').trim();
     s += `<Cell ss:StyleID="rank"><Data ss:Type="String">${rank}</Data></Cell>`;
   }
   for (let i = 0; i < extra; i++) s += '<Cell ss:StyleID="left"></Cell>';

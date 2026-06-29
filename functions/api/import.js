@@ -31,8 +31,11 @@ export async function onRequest(context) {
       }
     }
     
-    // If conflicts found, return them for user confirmation
-    if (conflicts.length > 0) {
+    // Check if force=true to skip conflict prompt
+    const force = request.url.includes('force=true');
+    
+    // If conflicts found and not forcing, return them for user confirmation
+    if (conflicts.length > 0 && !force) {
       return new Response(JSON.stringify({ 
         status: 'conflict',
         conflicts,
@@ -40,14 +43,6 @@ export async function onRequest(context) {
       }), {
         status: 200, headers: { 'Content-Type': 'application/json' }
       });
-    }
-    
-    // Step 2: Check if force=true for overwrite
-    const force = request.url.includes('force=true');
-    if (conflicts.length > 0 && !force) {
-      return new Response(JSON.stringify({
-        status: 'conflict', conflicts, message: '请确认覆盖'
-      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     }
     
     // Step 3: Import data
@@ -83,8 +78,8 @@ async function importData(db, body, overwrite) {
     for (const [date, dateData] of Object.entries(productData)) {
       if (date === 'name') continue;
       
-      const rating = dateData['评分'] || dateData['\u8BC4\u5206'] || 4.5;
-      const reviewCount = dateData['评论数'] || dateData['\u8BC4\u8BBA\u6570'] || 92;
+      const rating = dateData['评分'] !== undefined ? dateData['评分'] : (dateData['\u8BC4\u5206'] !== undefined ? dateData['\u8BC4\u5206'] : 0);
+      const reviewCount = dateData['评论数'] !== undefined ? dateData['评论数'] : (dateData['\u8BC4\u8BBA\u6570'] !== undefined ? dateData['\u8BC4\u8BBA\u6570'] : 0);
       const rank = dateData.rank || '';
       
       // If overwriting, delete existing data first

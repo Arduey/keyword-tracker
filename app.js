@@ -72,73 +72,48 @@ async function exportSingle(asin) {
 }
 
 // ========== Multi-Delete ==========
-let deleteDates = new Set();
-
 function showDeleteModal(asin) {
-  deleteDates = new Set();
   const product = allData[asin];
   if (!product) return;
-  const dbDates = new Set(Object.keys(product.dates));
-  const datesArr = [...dbDates].sort();
-  let minD = datesArr[0] || '2025-11-01', maxD = datesArr[datesArr.length - 1] || '2026-06-30';
+  const dbDates = [...new Set(Object.keys(product.dates))].sort();
+  const minD = dbDates[0] || '2025-11-01', maxD = dbDates[dbDates.length - 1] || '2026-06-30';
   
-  document.getElementById('deleteMsg').innerHTML = `产品: <b>${product.name}</b> (${asin})<br><span style="font-size:12px;color:#666;">点击日期多选，蓝色=有数据 红色=已选</span>`;
+  document.getElementById('deleteMsg').innerHTML = `产品: <b>${product.name}</b> (${asin})<br><span style="font-size:12px;color:#666;">数据范围: ${minD} ~ ${maxD}，共 ${dbDates.length} 个有数据日期</span>`;
   
-  let html = '<div style="display:flex;flex-wrap:wrap;gap:16px;">';
-  const s = new Date(minD), e = new Date(maxD); s.setDate(1); e.setMonth(e.getMonth() + 1, 0);
-  let c = new Date(s);
-  while (c <= e) { html += buildMonthCal(c.getFullYear(), c.getMonth(), dbDates); c.setMonth(c.getMonth() + 1); }
-  html += '</div><p id="deleteInfo" style="margin-top:8px;font-size:12px;color:#666;">已选: <b>0</b> 个日期</p>';
+  let html = '<div class="row"><label>起始日期:</label><input type="date" id="delStart" value="' + minD + '" style="flex:1;"><label>结束日期:</label><input type="date" id="delEnd" value="' + maxD + '" style="flex:1;"></div>';
+  html += '<p id="deleteInfo" style="margin-top:8px;font-size:12px;color:#666;">将删除从起始到结束（含）的所有数据</p>';
   
   document.getElementById('deleteDateContainer').innerHTML = html;
   document.getElementById('deleteConfirmBtn').onclick = confirmDelete;
-  document.getElementById('deleteConfirmBtn').disabled = true;
+  document.getElementById('deleteConfirmBtn').disabled = false;
   document.getElementById('deleteModal').classList.add('show');
-  // Store asin for delete
   document.getElementById('deleteModal').dataset.asin = asin;
 }
 
-function buildMonthCal(year, month, dbDates) {
-  const mNames = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
-  const fd = new Date(year, month, 1).getDay(), dim = new Date(year, month + 1, 0).getDate();
-  let h = `<div style="background:#fff;border:1px solid #e0e0e0;border-radius:8px;padding:8px;min-width:200px;">`;
-  h += `<div style="text-align:center;font-weight:600;font-size:13px;margin-bottom:4px;">${year}年 ${mNames[month]}</div>`;
-  h += `<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;text-align:center;font-size:10px;color:#999;">日 一 二 三 四 五 六`;
-  for (let i = 0; i < fd; i++) h += `<span></span>`;
-  for (let d = 1; d <= dim; d++) {
-    const ds = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-    const has = dbDates.has(ds), sel = deleteDates.has(ds);
-    let st = 'background:#f0f0f0;color:#ccc;border-radius:4px;padding:2px;font-size:11px;cursor:default;';
-    if (sel) st = 'background:#d93025;color:#fff;border-radius:4px;cursor:pointer;padding:2px;font-size:11px;';
-    else if (has) st = 'background:#1a73e8;color:#fff;border-radius:4px;cursor:pointer;padding:2px;font-size:11px;';
-    const oc = has ? `onclick="toggleDelDate('${ds}')"` : '';
-    h += `<span style="${st}" ${oc}>${d}</span>`;
-  }
-  return h + `</div></div>`;
-}
-
-function toggleDelDate(ds) {
-  if (deleteDates.has(ds)) deleteDates.delete(ds); else deleteDates.add(ds);
-  document.getElementById('deleteInfo').innerHTML = '已选: <b>' + deleteDates.size + '</b> 个日期';
-  document.getElementById('deleteConfirmBtn').disabled = deleteDates.size === 0;
-  // Refresh calendar colors
-  const asin = document.getElementById('deleteModal').dataset.asin;
-  showDeleteModal(asin);
-}
-
-function closeDeleteModal() { document.getElementById('deleteModal').classList.remove('show'); deleteDates = new Set(); }
+function closeDeleteModal() { document.getElementById('deleteModal').classList.remove('show'); }
 
 async function confirmDelete() {
   const asin = document.getElementById('deleteModal').dataset.asin;
-  if (!asin || deleteDates.size === 0) return;
-  let success = 0;
-  for (const ds of deleteDates) {
-    try {
-      const r = await fetch(`/api/data?asin=${encodeURIComponent(asin)}&date=${encodeURIComponent(ds)}`, { method: 'DELETE' });
-      if (r.ok) success++;
-    } catch(e) {}
+  const start = document.getElementById('delStart').value;
+  const end = document.getElementById('delEnd').value;
+  if (!asin || !start || !end) return;
+  
+  // Generate all dates in range
+  const dates = [];
+  let cur = new Date(start);
+  const endD = new Date(end);
+  while (cur <= endD) {
+    dates.push(cur.toISOString().substring(0, 10));
+    cur.setDate(cur.getDate() + 1);
   }
-  alert(`✅ 已删除 ${success}/${deleteDates.size} 个日期数据`);
+  
+  if (!confirm(`确定删除 ${asin} 从 ${start} 到 ${end} 共 ${dates.length} 天的数据？`)) return;
+  
+  let success = 0;
+  for (const ds of dates) {
+    try { const r = await fetch(`/api/data?asin=${encodeURIComponent(asin)}&date=${encodeURIComponent(ds)}`, { method: 'DELETE' }); if (r.ok) success++; } catch(e) {}
+  }
+  alert(`✅ 已删除 ${success}/${dates.length} 天数据`);
   closeDeleteModal();
   refreshData();
 }
@@ -187,7 +162,7 @@ function renderPreview() {
   for (const d of dates) html += '<td class="td-date">' + formatDateChinese(d) + '</td>';
   html += '</tr>';
   html += '<tr class="row-rank"><td class="td-rank" style="font-weight:bold;">Rank</td>';
-  for (const d of dates) { const dd = product.dates[d]; html += '<td class="td-rank">' + (dd ? (dd.rank || '').replace(/(.)#(\d)/g, '$1<br>#$2') : '') + '</td>'; }
+  for (const d of dates) { const dd = product.dates[d]; html += '<td class="td-rank">' + (dd ? (dd.rank || '').replace(/\n/g, '<br>') : '') + '</td>'; }
   html += '</tr>';
   html += '<tr class="row-normal"><td class="td-center">评分 / 评论</td>';
   for (const d of dates) { const dd = product.dates[d]; html += '<td class="td-center">' + (dd ? dd.rating + ' / ' + dd.reviewCount : '') + '</td>'; }
@@ -197,7 +172,7 @@ function renderPreview() {
   html += '<tr class="row-normal"><td class="td-section" colspan="' + (dates.length + 1) + '" style="background:#5B9BD5;color:#fff;">自然位-精准词</td></tr>';
   for (const kw of orderedKws.natural) {
     html += '<tr class="row-normal kw-drag" draggable="true" data-section="natural" data-kw="' + kw.replace(/"/g,'&quot;') + '" ondragstart="dragStart(event)" ondragover="dragOver(event)" ondrop="dropKw(event)">';
-    html += '<td style="text-align:left;cursor:grab;">⋮⋮ ' + kw + '</td>';
+    html += '<td style="text-align:left;cursor:grab;">⋮⋮ ' + kw + ' <span style="color:#d93025;cursor:pointer;font-size:14px;" onclick="event.stopPropagation();deleteKeyword(\'' + asin + '\',\'' + kw.replace(/'/g,'\\\'') + '\')" title="删除此关键词">✕</span></td>';
     for (const d of dates) { const dd = product.dates[d]; html += '<td class="td-center">' + ((dd && dd.keywords[kw]) ? dd.keywords[kw].naturalPos : '') + '</td>'; }
     html += '</tr>';
   }
@@ -207,14 +182,14 @@ function renderPreview() {
   html += '<tr class="row-normal"><td class="td-section" colspan="' + (dates.length + 1) + '" style="background:#5B9BD5;color:#fff;">广告位-精准词</td></tr>';
   for (const kw of orderedKws.ad) {
     html += '<tr class="row-normal kw-drag" draggable="true" data-section="ad" data-kw="' + kw.replace(/"/g,'&quot;') + '" ondragstart="dragStart(event)" ondragover="dragOver(event)" ondrop="dropKw(event)">';
-    html += '<td style="text-align:left;cursor:grab;">⋮⋮ ' + kw + '</td>';
+    html += '<td style="text-align:left;cursor:grab;">⋮⋮ ' + kw + ' <span style="color:#d93025;cursor:pointer;font-size:14px;" onclick="event.stopPropagation();deleteKeyword(\'' + asin + '\',\'' + kw.replace(/'/g,'\\\'') + '\')" title="删除此关键词">✕</span></td>';
     for (const d of dates) { const dd = product.dates[d]; html += '<td class="td-center">' + ((dd && dd.keywords[kw]) ? dd.keywords[kw].adPos : '') + '</td>'; }
     html += '</tr>';
   }
   html += '</table>';
   
   html += '<div class="row" style="margin-top:8px;">';
-  html += '<button class="btn btn-danger btn-sm" onclick="showDeleteModal(\'' + asin + '\')">🗑 多选删除</button>';
+  html += '<button class="btn btn-danger btn-sm" onclick="showDeleteModal(\'' + asin + '\')">🗑 删除数据</button>';
   html += '<span style="flex:1;"></span>';
   html += '<button class="btn btn-outline btn-sm" onclick="exportSingle(\'' + asin + '\')">📥 导出此产品</button>';
   html += '</div>';
@@ -249,11 +224,36 @@ function dropKw(e) {
   }
 }
 
+async function deleteKeyword(asin, keyword) {
+  if (!confirm('确定删除产品 ' + asin + ' 的关键词 "' + keyword + '" 的所有数据？')) return;
+  try {
+    const resp = await fetch('/api/data?asin=' + encodeURIComponent(asin) + '&keyword=' + encodeURIComponent(keyword), { method: 'DELETE' });
+    const result = await resp.json();
+    if (result.status === 'deleted') { alert('✅ 已删除 ' + result.changes + ' 条记录'); refreshData(); }
+  } catch(e) { alert('删除失败: ' + e.message); }
+}
+
+async function renameProduct(asin) {
+  const newName = prompt('请输入新名称:', (allData[asin] && allData[asin].name) || '');
+  if (!newName) return;
+  try {
+    const resp = await fetch('/api/data', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ asin, name: newName }) });
+    const result = await resp.json();
+    if (result.status === 'updated') { refreshData(); }
+  } catch(e) { alert('修改失败: ' + e.message); }
+}
+
 function renderTabs() {
   const tabs = document.getElementById('productTabs');
   const asins = Object.keys(allData).sort();
   if (asins.length === 0) { tabs.innerHTML = '<span style="color:#999;padding:8px;">暂无数据</span>'; return; }
-  tabs.innerHTML = asins.map(a => `<div class="tab${a===activeTab?' active':''}" onclick="selectTab('${a}')">${allData[a].name||a}<br><small>${a}</small></div>`).join('');
+  tabs.innerHTML = asins.map(a => {
+    const n = allData[a].name || a;
+    return `<div class="tab${a===activeTab?' active':''}">
+<span onclick="selectTab('${a}')">${n}<br><small>${a}</small></span>
+<span style="font-size:10px;color:#666;cursor:pointer;margin-left:4px;" onclick="event.stopPropagation();renameProduct('${a}')" title="修改名称">✎</span>
+</div>`;
+  }).join('');
   if (!activeTab || !asins.includes(activeTab)) { activeTab = asins[0]; tabs.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',asins[i]===activeTab)); }
 }
 
